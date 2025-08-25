@@ -98,23 +98,31 @@ jse_data_clean %>%
 After imputation, recompute all dependent features to avoid mixing true and stale/missing data.
 
 ```{r recalculate-indicators}
+library(dplyr)
+library(zoo)
+
 jse_data_clean <- jse_data_clean %>%
-  arrange(Ticker, as.Date(Date)) %>%
+  mutate(Date = lubridate::mdy(Date)) %>%   # ensure true Date type
+  arrange(Ticker, Date) %>%
   group_by(Ticker) %>%
   mutate(
+    Daily_VWAP = (High + Low + Close) / 3,
     MA_20 = zoo::rollmean(Close, k = 20, fill = NA, align = "right"),
     MA_50 = zoo::rollmean(Close, k = 50, fill = NA, align = "right"),
     Daily_Return = (Close / lag(Close)) - 1,
-    Volatility_30D = rollapply(Daily_Return, width = 30, FUN = sd, fill = NA, align = "right", na.rm = TRUE),
-    Volatility_60D = rollapply(Daily_Return, width = 60, FUN = sd, fill = NA, align = "right", na.rm = TRUE),
+    Volatility_30D = rollapply(Daily_Return, width = 30, FUN = sd,
+                               fill = NA, align = "right", na.rm = TRUE),
+    Volatility_60D = rollapply(Daily_Return, width = 60, FUN = sd,
+                               fill = NA, align = "right", na.rm = TRUE),
     TPxVolume = Close * Volume,
-    VWAP_7D = rollapply(
-      TPxVolume, width = 7, FUN = sum, fill = NA, align = "right", na.rm = TRUE
-    ) / rollapply(
-      Volume, width = 7, FUN = sum, fill = NA, align = "right", na.rm = TRUE
-    )
+    VWAP_7D = rollapply(TPxVolume, width = 7, FUN = sum,
+                        fill = NA, align = "right", na.rm = TRUE) /
+              rollapply(Volume, width = 7, FUN = sum,
+                        fill = NA, align = "right", na.rm = TRUE)
   ) %>%
-  select(-TPxVolume) %>%
+  select(Ticker, Date, Open, High, Low, Close, Volume, Daily_VWAP,
+         MA_20, MA_50, Daily_Return, Volatility_30D, Volatility_60D,
+         VWAP_7D, everything(), -TPxVolume) %>%
   ungroup()
 ```
 
@@ -146,6 +154,7 @@ jse_data_dropped %>%
     End = max(Date),
     TradingDays = n(),
     AvgVolume = mean(Volume, na.rm = TRUE),
+    Avg_Daily_VWAP = mean(Daily_VWAP, na.rm = TRUE),
     AvgClose = mean(Close, na.rm = TRUE),
     Avg_VWAP_7D = mean(VWAP_7D, na.rm = TRUE)
   ) %>%
